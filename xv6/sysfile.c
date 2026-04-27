@@ -253,6 +253,8 @@ create(char *path, short type, short major, short minor)
     ilock(ip);
     if(type == T_FILE && ip->type == T_FILE)
       return ip;
+    if(type == T_SYMLINK && ip->type == T_SYMLINK)
+      return ip;
     iunlockput(ip);
     return 0;
   }
@@ -293,6 +295,7 @@ sys_open(void)
   if(argstr(0, &path) < 0 || argint(1, &omode) < 0)
     return -1;
 
+  // cprintf("path to open with sysopen: %s\n", path);
   begin_op();
 
   if(omode & O_CREATE){
@@ -306,6 +309,7 @@ sys_open(void)
       end_op();
       return -1;
     }
+    // cprintf("2\n");
     ilock(ip);
     if(ip->type == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
@@ -313,6 +317,7 @@ sys_open(void)
       return -1;
     }
   }
+    // cprintf("3\n");
 
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
@@ -321,6 +326,31 @@ sys_open(void)
     end_op();
     return -1;
   }
+    // cprintf("4\n");
+  
+  if(ip->type == T_SYMLINK && 1){
+    // cprintf("symlink detected\n");
+    for(int i=0;i<10;i++){
+      // ilock(ip);
+      char target[1000] = "";
+      readi(ip,target,0,100);
+      // cprintf("readi no crash\n");
+      iunlockput(ip);
+      // cprintf("target path: %s\n",target);
+      ip = namei(target);
+      // cprintf("ip pointar: %p\n", ip);
+      ilock(ip);
+      if(ip->type != T_SYMLINK){
+        break;
+      }
+    }
+    if(ip->type == T_SYMLINK){
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+  }
+  // cprintf("ip->ref : %d\n", ip->ref);
   iunlock(ip);
   end_op();
 
@@ -446,5 +476,26 @@ sys_pipe(void)
 int
 sys_symlink(void)
 {
+  char *target, *linkpath;
+  struct inode *ip;
+  if(argstr(0, &target) < 0|| argstr(1, &linkpath) <0){
+    return -1;
+  }
+  // cprintf("args collected in sys_symlink\n");
+  begin_op();
+  ip = create(linkpath, T_SYMLINK, 0, 0);
+  if(ip == 0){
+    return -1;
+  }
+  // cprintf("we make it\n\n");
+  int strlen = 0;
+  while(target[strlen]!='\0'){
+    strlen++;
+  }
+  // ilock(ip);
+  writei(ip, target, 0, strlen+1);
+  iunlock(ip);
+  end_op();
+  
   return 0;
 }
